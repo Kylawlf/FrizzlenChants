@@ -5,3 +5,16 @@ api-version: '1.21'
 load: STARTUP
 authors: [ frizzlenpop ]
 description: A Plugin for Custom Enchants. 
+depend: [ProtocolLib]
+
+commands:
+  customenchant:
+    description: Apply a custom enchantment to the item in your hand
+    usage: /customenchant <enchantment> [level]
+    aliases: [cenchant, ce]
+    permission: frizzlenchants.enchant
+
+permissions:
+  frizzlenchants.enchant:
+    description: Allows applying custom enchantments
+    default: op
