@@ -201,19 +201,37 @@ public class SwordSummonerEnchant extends CustomEnchant {
      */
     private void animateSwordsAndSpawnBoss(Player player, Location targetLocation, List<ArmorStand> swords, int level) {
         // Add debugging
-        plugin.getLogger().info("Starting sword animation sequence with " + swords.size() + " swords");
+        plugin.getLogger().info("[SwordSummoner] Starting sword animation sequence with " + swords.size() + " swords");
         
         World world = targetLocation.getWorld();
         if (world == null) {
-            plugin.getLogger().warning("World is null in animateSwordsAndSpawnBoss");
+            plugin.getLogger().warning("[SwordSummoner] World is null in animateSwordsAndSpawnBoss");
             return;
         }
         
         // Create a safe copy of the sword list to prevent concurrent modification
-        final List<ArmorStand> swordsCopy = new ArrayList<>(swords);
+        final List<ArmorStand> swordsCopy = new ArrayList<>();
+        for (ArmorStand sword : swords) {
+            if (sword != null && !sword.isDead()) {
+                swordsCopy.add(sword);
+            }
+        }
+        
+        if (swordsCopy.isEmpty()) {
+            plugin.getLogger().warning("[SwordSummoner] No valid swords to animate");
+            return;
+        }
+        
+        plugin.getLogger().info("[SwordSummoner] Found " + swordsCopy.size() + " valid swords for animation");
         
         // Show message to player
         player.sendActionBar(ChatColor.GOLD + "Summoning the Sword Guardian...");
+        
+        // Store original sword positions
+        final Map<ArmorStand, Location> originalPositions = new HashMap<>();
+        for (ArmorStand sword : swordsCopy) {
+            originalPositions.put(sword, sword.getLocation().clone());
+        }
         
         new BukkitRunnable() {
             int tick = 0;
@@ -224,6 +242,11 @@ public class SwordSummonerEnchant extends CustomEnchant {
             @Override
             public void run() {
                 try {
+                    // Log every 20 ticks to track progress
+                    if (tick % 20 == 0) {
+                        plugin.getLogger().info("[SwordSummoner] Animation tick: " + tick + ", swords: " + swordsCopy.size());
+                    }
+                    
                     // Check if all swords are gone (something went wrong)
                     boolean allSwordsGone = true;
                     for (ArmorStand sword : swordsCopy) {
@@ -234,69 +257,100 @@ public class SwordSummonerEnchant extends CustomEnchant {
                     }
                     
                     if (allSwordsGone && tick < bossSpawnTick) {
-                        plugin.getLogger().warning("All swords disappeared before boss spawn");
-                        this.cancel();
-                        return;
+                        plugin.getLogger().warning("[SwordSummoner] All swords disappeared before boss spawn at tick " + tick);
+                        // Continue to boss spawn anyway to prevent getting stuck
+                        tick = bossSpawnTick;
                     }
                     
                     // Phase 1: Swords float and spin
                     if (tick < collectionStart) {
+                        plugin.getLogger().fine("[SwordSummoner] Phase 1: Floating swords at tick " + tick);
+                        
+                        // Process each sword
                         for (ArmorStand sword : swordsCopy) {
                             if (sword == null || sword.isDead()) continue;
                             
                             // Make swords float up and spin
                             Location swordLoc = sword.getLocation();
-                            double angle = tick * 0.1;
-                            double radius = 2.0 - (tick * 0.01); // Slowly reduce radius
-                            double height = swordLoc.getY() + 0.01; // Float up slowly
+                            double yOffset = Math.sin(tick * 0.1) * 0.1;
+                            swordLoc.add(0, yOffset, 0);
+                            
+                            // Rotate sword - using setRotation which is more reliable
+                            float yaw = (sword.getLocation().getYaw() + 5) % 360;
+                            sword.setRotation(yaw, 0);
                             
                             // Update location
-                            swordLoc.setY(height);
                             sword.teleport(swordLoc);
                             
-                            // Rotate sword
-                            sword.setRotation((float)(angle * 30), 0);
-                            
-                            // Add particle effects
-                            try {
-                                world.spawnParticle(Particle.CRIT, swordLoc, 5, 0.2, 0.2, 0.2, 0.05);
-                            } catch (Exception e) {
-                                plugin.getLogger().warning("Error spawning particles: " + e.getMessage());
+                            // Add particle effects every few ticks to reduce load
+                            if (tick % 5 == 0) {
+                                try {
+                                    world.spawnParticle(Particle.CRIT, swordLoc, 3, 0.2, 0.2, 0.2, 0.05);
+                                } catch (Exception e) {
+                                    // Fallback to a more common particle type if there's an error
+                                    world.spawnParticle(Particle.FLAME, swordLoc, 2, 0.1, 0.1, 0.1, 0.01);
+                                }
                             }
+                        }
+                        
+                        // Play ambient sound occasionally
+                        if (tick % 20 == 0) {
+                            world.playSound(targetLocation, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.5f, 1.0f);
                         }
                     }
                     // Phase 2: Swords move to center
                     else if (tick < explosionTick) {
+                        if (tick == collectionStart) {
+                            plugin.getLogger().info("[SwordSummoner] Starting Phase 2: Swords moving to center at tick " + tick);
+                            player.sendActionBar(ChatColor.GOLD + "The swords are gathering power...");
+                            world.playSound(targetLocation, Sound.BLOCK_BEACON_ACTIVATE, 0.8f, 1.2f);
+                        }
+                        
+                        // Calculate progress (0.0 to 1.0) for this phase
+                        double progress = (double)(tick - collectionStart) / (explosionTick - collectionStart);
+                        
                         for (ArmorStand sword : swordsCopy) {
                             if (sword == null || sword.isDead()) continue;
                             
-                            // Calculate center direction vector
-                            Location swordLoc = sword.getLocation();
-                            Vector direction = targetLocation.toVector().subtract(swordLoc.toVector());
-                            double distance = direction.length();
-                            
-                            // Move towards center as we get closer to explosion tick
-                            double speedFactor = 0.03 * (1 + ((tick - collectionStart) / 20.0));
-                            
-                            if (distance > 0.2) {
-                                direction.normalize().multiply(speedFactor);
-                                swordLoc.add(direction);
-                                sword.teleport(swordLoc);
+                            // Get original position and create vector to target
+                            Location original = originalPositions.get(sword);
+                            if (original == null) {
+                                original = sword.getLocation();
                             }
                             
-                            // Rotate faster as we get closer to center
-                            sword.setRotation(sword.getLocation().getYaw() + 10, 0);
+                            // Calculate direction to center using lerp
+                            Vector direction = targetLocation.clone().subtract(original).toVector();
                             
-                            // Add more intense particles
-                            try {
-                                world.spawnParticle(Particle.CRIT, swordLoc, 8, 0.1, 0.1, 0.1, 0.05);
-                            } catch (Exception e) {
-                                plugin.getLogger().warning("Error spawning particles: " + e.getMessage());
+                            // Determine new position based on progress
+                            Location newLoc = original.clone().add(direction.multiply(progress));
+                            
+                            // Rotate sword faster as it approaches center
+                            float yaw = (sword.getLocation().getYaw() + 5 + (float)(progress * 10)) % 360;
+                            
+                            // Update sword position and rotation
+                            sword.teleport(newLoc);
+                            sword.setRotation(yaw, 0);
+                            
+                            // Add more intense particles as progress increases
+                            if (tick % 3 == 0) {
+                                try {
+                                    world.spawnParticle(Particle.CRIT, newLoc, 5, 0.1, 0.1, 0.1, 0.05);
+                                } catch (Exception e) {
+                                    world.spawnParticle(Particle.FLAME, newLoc, 3, 0.1, 0.1, 0.1, 0.01);
+                                }
                             }
+                        }
+                        
+                        // Increasingly intense sounds as we approach explosion
+                        if (tick % 10 == 0) {
+                            world.playSound(targetLocation, Sound.BLOCK_BEACON_AMBIENT, 0.5f, 0.5f + (float)progress);
                         }
                     }
                     // Phase 3: Explosion
                     else if (tick == explosionTick) {
+                        plugin.getLogger().info("[SwordSummoner] Phase 3: Explosion at tick " + tick);
+                        player.sendActionBar(ChatColor.RED + "Power gathering complete!");
+                        
                         // Remove all swords
                         for (ArmorStand sword : swordsCopy) {
                             if (sword != null && !sword.isDead()) {
@@ -310,7 +364,9 @@ public class SwordSummonerEnchant extends CustomEnchant {
                             world.spawnParticle(Particle.FLAME, targetLocation, 50, 2, 2, 2, 0.1);
                             world.spawnParticle(Particle.LAVA, targetLocation, 20, 1, 1, 1, 0.1);
                         } catch (Exception e) {
-                            plugin.getLogger().warning("Error spawning explosion particles: " + e.getMessage());
+                            plugin.getLogger().warning("[SwordSummoner] Error spawning explosion particles: " + e.getMessage());
+                            // Fallback particles
+                            world.spawnParticle(Particle.FLAME, targetLocation, 30, 1, 1, 1, 0.1);
                         }
                         
                         // Play explosion sound
@@ -328,6 +384,11 @@ public class SwordSummonerEnchant extends CustomEnchant {
                     }
                     // Phase 4: Forming boss from energy
                     else if (tick < bossSpawnTick) {
+                        if (tick == explosionTick + 1) {
+                            plugin.getLogger().info("[SwordSummoner] Phase 4: Forming boss at tick " + tick);
+                            player.sendActionBar(ChatColor.GOLD + "The Sword Guardian is forming...");
+                        }
+                        
                         double progress = (tick - explosionTick) / (double)(bossSpawnTick - explosionTick);
                         
                         // Create swirling particles that collapse into boss shape
@@ -355,6 +416,7 @@ public class SwordSummonerEnchant extends CustomEnchant {
                     }
                     // Phase 5: Spawn boss
                     else if (tick == bossSpawnTick) {
+                        plugin.getLogger().info("[SwordSummoner] Phase 5: Spawning boss at tick " + tick);
                         player.sendActionBar(ChatColor.RED + "The Sword Guardian has been summoned!");
                         
                         // Final explosion effect
@@ -362,7 +424,7 @@ public class SwordSummonerEnchant extends CustomEnchant {
                             world.spawnParticle(Particle.EXPLOSION, targetLocation, 2, 0.5, 0.5, 0.5, 0.1);
                             world.spawnParticle(Particle.FLAME, targetLocation, 50, 1, 1, 1, 0.2);
                         } catch (Exception e) {
-                            plugin.getLogger().warning("Error spawning final boss particles: " + e.getMessage());
+                            plugin.getLogger().warning("[SwordSummoner] Error spawning final boss particles: " + e.getMessage());
                         }
                         
                         // Play spawn sound
@@ -373,24 +435,39 @@ public class SwordSummonerEnchant extends CustomEnchant {
                             @Override
                             public void run() {
                                 try {
+                                    plugin.getLogger().info("[SwordSummoner] Spawning boss now...");
                                     spawnSwordBoss(player, targetLocation, level);
-                                    plugin.getLogger().info("Boss spawn completed successfully");
+                                    plugin.getLogger().info("[SwordSummoner] Boss spawn completed successfully");
                                 } catch (Exception e) {
-                                    plugin.getLogger().severe("Error spawning boss: " + e.getMessage());
+                                    plugin.getLogger().severe("[SwordSummoner] Error spawning boss: " + e.getMessage());
                                     e.printStackTrace();
+                                    // Notify player of failure
+                                    player.sendActionBar(ChatColor.RED + "Summoning failed! Try again later.");
                                 }
                             }
                         }.runTask(plugin);
                         
                         // End this animation sequence
                         this.cancel();
+                        return;
                     }
                     
+                    // Always increment the tick counter
                     tick++;
                     
                 } catch (Exception e) {
-                    plugin.getLogger().severe("Error in sword animation: " + e.getMessage());
+                    plugin.getLogger().severe("[SwordSummoner] Error in sword animation at tick " + tick + ": " + e.getMessage());
                     e.printStackTrace();
+                    
+                    // If we encounter an error, try to skip to boss spawn to avoid getting stuck
+                    try {
+                        plugin.getLogger().info("[SwordSummoner] Attempting to recover by spawning boss directly...");
+                        spawnSwordBoss(player, targetLocation, level);
+                    } catch (Exception ex) {
+                        plugin.getLogger().severe("[SwordSummoner] Recovery attempt failed: " + ex.getMessage());
+                        player.sendActionBar(ChatColor.RED + "Summoning failed! Try again later.");
+                    }
+                    
                     this.cancel();
                 }
             }
