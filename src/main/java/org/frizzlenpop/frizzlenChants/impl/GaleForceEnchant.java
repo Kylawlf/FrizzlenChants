@@ -31,7 +31,7 @@ public class GaleForceEnchant extends CustomEnchant {
     private final FrizzlenChants plugin;
     
     public GaleForceEnchant() {
-        super("Gale Force", 3, Material.BOW, Material.CROSSBOW);
+        super("GaleForce", 3, Material.BOW, Material.CROSSBOW);
         this.plugin = FrizzlenChants.getPlugin(FrizzlenChants.class);
     }
 
