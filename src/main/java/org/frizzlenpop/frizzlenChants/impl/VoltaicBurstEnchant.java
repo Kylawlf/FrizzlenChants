@@ -102,7 +102,7 @@ public class VoltaicBurstEnchant extends CustomEnchant {
                 arrow, 
                 Particle.ELECTRIC_SPARK, 
                 Color.fromRGB(120, 180, 255), // Light blue color
-                200 // Duration in ticks
+                500 // Duration in ticks
             );
         }
     }
@@ -146,6 +146,7 @@ public class VoltaicBurstEnchant extends CustomEnchant {
      * @param target The entity being affected
      * @param level The enchantment level
      */
+    
     private void applyVoltaicEffect(Player attacker, LivingEntity target, int level) {
         Location targetLocation = target.getLocation();
         
@@ -154,15 +155,14 @@ public class VoltaicBurstEnchant extends CustomEnchant {
         
         // Play thunder sound at reduced volume
         targetLocation.getWorld().playSound(targetLocation, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.7f, 1.2f);
-        
-        // Apply base damage
-        double baseDamage = 2.0 + (level * 1.5); // 3.5 to 6.5 damage
-        target.damage(baseDamage, attacker);
+       
+        double baseDamage = 1.0 + (level * 1.5); // 3.5 to 6.5 damage
+        target.damage(baseDamage);
         
         // Chain lightning effect (chance increases with level)
-        int chainChance = 20 + (level * 10); // 30% to 50% chance
+        int chainChance = 10 + (level * 10); // 30% to 50% chance
         
-        if (random.nextInt(100) < chainChance) {
+        if (random.nextInt(25) < chainChance) {
             LivingEntity chainTarget = findNearbyTarget(target, level);
             
             if (chainTarget != null) {
@@ -171,9 +171,9 @@ public class VoltaicBurstEnchant extends CustomEnchant {
                                  chainTarget.getLocation().add(0, 1, 0), 
                                  level);
                 
-                // Apply chain damage (reduced from primary damage)
                 double chainDamage = baseDamage * 0.6;
-                chainTarget.damage(chainDamage, attacker);
+                chainTarget.damage(chainDamage);
+                
                 
                 // Smaller electric effect on chained target
                 createElectricEffect(chainTarget.getLocation(), 2.0, level, false);
@@ -258,7 +258,7 @@ public class VoltaicBurstEnchant extends CustomEnchant {
     private void createLightningArc(Location start, Location end, int level) {
         // Calculate the direction vector
         double distance = start.distance(end);
-        int points = (int) (distance * 3); // More points for longer distances
+        int points = (int) (distance * 5); // More points for longer distances
         
         // Get direction vector
         double dX = (end.getX() - start.getX()) / points;
