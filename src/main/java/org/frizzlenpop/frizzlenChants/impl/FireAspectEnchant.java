@@ -49,16 +49,13 @@ public class FireAspectEnchant extends CustomEnchant {
         // Apply fire effect to the target
         if (target instanceof LivingEntity) {
             // Set target on fire (2 seconds per level)
-            target.setFireTicks(level * 40);
+            target.setFireTicks(level * 20);
             
             // Add visual effects
             target.getWorld().spawnParticle(Particle.FLAME, target.getLocation().add(0, 1, 0), 
-                    10 * level, 0.5, 0.5, 0.5, 0.1);
+                    2 * level, 0.5, 0.5, 0.5, 0.1);
             target.getWorld().playSound(target.getLocation(), Sound.ENTITY_GENERIC_BURN, 1.0f, 1.0f);
             
-            // Add bonus fire damage
-            double fireDamage = level * 1.5;
-            ((LivingEntity) target).damage(fireDamage, player);
         }
     }
     

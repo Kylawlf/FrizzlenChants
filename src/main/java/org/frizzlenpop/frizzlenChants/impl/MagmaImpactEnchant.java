@@ -1,22 +1,12 @@
 package org.frizzlenpop.frizzlenChants.impl;
 
-import org.bukkit.Color;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
-import org.bukkit.World;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.entity.BlockDisplay;
-import org.bukkit.entity.Display;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
+import org.bukkit.*;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.frizzlenpop.frizzlenChants.FrizzlenChants;
@@ -44,8 +34,8 @@ public class MagmaImpactEnchant extends CustomEnchant {
     private static final int COOLDOWN_MILLIS = 10000; // 10 seconds cooldown
     private static final double BASE_DAMAGE = 4.0; // Base damage per meteor
     private static final float KNOCKBACK_STRENGTH = 1.2f; // Knockback strength
-    private static final int SUMMON_HEIGHT = 15; // Max height above target
-    private static final int SCATTER_RADIUS = 20; // Area radius for meteor shower
+    private static final int SUMMON_HEIGHT = 7; // Max height above target
+    private static final int SCATTER_RADIUS = 10; // Area radius for meteor shower
     private static final Material[] METEOR_MATERIALS = {
         Material.MAGMA_BLOCK, Material.NETHERRACK, Material.BLACKSTONE, Material.OBSIDIAN
     };
@@ -111,7 +101,7 @@ public class MagmaImpactEnchant extends CustomEnchant {
         // Roll for proc
         if (random.nextInt(100) < procChance) {
             // Update last proc time
-            lastProcTime.put(playerId, currentTime);
+            lastProcTime.put(playerId, Long.valueOf(currentTime));
             
             // Summon the meteor shower
             summonMeteorShower(player, target, level);
@@ -162,7 +152,7 @@ public class MagmaImpactEnchant extends CustomEnchant {
                 }
                 
                 // Summon meteors at random intervals
-                if (tick % (random.nextInt(5) + 3) == 0) {
+                if (tick % (random.nextInt(5) + 2) == 0) {
                     // Determine random position within scatter radius
                     double angle = random.nextDouble() * Math.PI * 2;
                     double distance = random.nextDouble() * SCATTER_RADIUS;
@@ -170,7 +160,7 @@ public class MagmaImpactEnchant extends CustomEnchant {
                     double z = Math.sin(angle) * distance;
                     
                     // Calculate impact position
-                    Location impactPos = targetLoc.clone().add(x, 0, z);
+                    Location impactPos = targetLoc.clone().add(0, 0, 0);
                     
                     // Create individual warning effect
                     createWarningEffect(impactPos);
@@ -202,8 +192,8 @@ public class MagmaImpactEnchant extends CustomEnchant {
         
         // Calculate spawn position (at an angle)
         double angle = random.nextDouble() * Math.PI * 2;
-        double horizontalDistance = 5 + random.nextDouble() * 10;
-        double height = 10 + random.nextDouble() * 5;
+        double horizontalDistance = random.nextDouble() * 3;
+        double height = 10 * random.nextDouble();
         
         // Calculate spawn location for angled approach
         Location spawnLoc = targetPos.clone().add(
@@ -217,8 +207,8 @@ public class MagmaImpactEnchant extends CustomEnchant {
         float meteorScale = Math.min(3.0f, baseScale);
         
         // Randomize meteor speed
-        int fallDuration = Math.max(10, 30 - meteorIndex - (level * 3)); // Faster with higher levels
-        
+        int fallDuration = Math.max(10, 5 - meteorIndex - (level)); // Faster with higher levels
+
         // Calculate meteor velocity vector (from spawn to target)
         Vector velocity = targetPos.clone().subtract(spawnLoc).toVector().normalize();
         
@@ -243,11 +233,11 @@ public class MagmaImpactEnchant extends CustomEnchant {
         meteor.setGlowing(true);
         
         // Fall animation
-        new BukkitRunnable() {
+        BukkitTask bukkitTask = new BukkitRunnable() {
             int tick = 0;
-            final Vector path = velocity.clone().multiply(1.0 / fallDuration); // Move per tick
+            final Vector path = velocity.clone().multiply(2.0 / fallDuration); // Move per tick
             boolean hasImpacted = false;
-            
+
             @Override
             public void run() {
                 if (!meteor.isValid() || hasImpacted || tick > fallDuration * 1.5) {
@@ -255,38 +245,38 @@ public class MagmaImpactEnchant extends CustomEnchant {
                     this.cancel();
                     return;
                 }
-                
+
                 // Move the meteor
                 Location newLoc = meteor.getLocation().add(path);
                 meteor.teleport(newLoc);
-                
+
                 // Rotate the meteor
                 Transformation currentTransform = meteor.getTransformation();
                 Transformation newTransform = new Transformation(
-                    currentTransform.getTranslation(),
-                    new AxisAngle4f((float) (tick * 0.1), 1.0f, 0.5f, 0.0f), // Continuous rotation
-                    currentTransform.getScale(),
-                    new AxisAngle4f(0, 0, 0, 0)
+                        currentTransform.getTranslation(),
+                        new AxisAngle4f((float) (tick * 0.1), 1.0f, 0.5f, 0.0f), // Continuous rotation
+                        currentTransform.getScale(),
+                        new AxisAngle4f(0, 0, 0, 0)
                 );
                 meteor.setTransformation(newTransform);
-                
+
                 // Create trailing particles
                 createMeteorTrail(meteor.getLocation(), meteorScale, level);
-                
+
                 // Check if close to ground or reached the target
-                if (tick >= fallDuration || isNearGround(meteor.getLocation()) || 
-                    meteor.getLocation().distanceSquared(targetPos) < 2.0) {
-                    
+                if (tick >= fallDuration || isNearGround(meteor.getLocation()) ||
+                        meteor.getLocation().distanceSquared(targetPos) < 0) {
+
                     // Create explosion effect
                     createMeteorImpactEffect(meteor.getLocation(), meteorScale, level);
-                    
+
                     // Apply damage to nearby entities
                     applyMeteorDamage(player, meteor.getLocation(), meteorScale, level);
-                    
+
                     // Set as impacted
                     hasImpacted = true;
                 }
-                
+
                 tick++;
             }
         }.runTaskTimer(plugin, 0L, 1L);
@@ -300,7 +290,7 @@ public class MagmaImpactEnchant extends CustomEnchant {
      */
     private boolean isNearGround(Location location) {
         // Check a few blocks down for solid ground
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 2; i++) {
             Location check = location.clone().subtract(0, i, 0);
             if (check.getBlock().getType().isSolid()) {
                 return true;
